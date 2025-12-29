@@ -1,0 +1,45 @@
+{
+  "rules": [
+    {
+      "id": "deny-large-swap-without-approval",
+      "effect": "deny",
+      "actions": ["swap.execute"],
+      "resources": ["wallet"],
+      "roles": ["user"],
+      "conditions": [
+        {"key": "context.amount_usd", "op": "gte", "value": 10000}
+      ]
+    },
+    {
+      "id": "allow-swap-execute",
+      "effect": "allow",
+      "actions": ["swap.execute"],
+      "resources": ["wallet"],
+      "roles": ["user", "admin"]
+    },
+    {
+      "id": "deny-large-wallet-send",
+      "effect": "deny",
+      "actions": ["wallet.send"],
+      "resources": ["wallet"],
+      "roles": ["user"],
+      "conditions": [
+        {"key": "context.amount_usd", "op": "gte", "value": 5000}
+      ]
+    },
+    {
+      "id": "allow-wallet-send",
+      "effect": "allow",
+      "actions": ["wallet.send"],
+      "resources": ["wallet"],
+      "roles": ["user", "admin"]
+    },
+    {
+      "id": "allow-trade-ingest",
+      "effect": "allow",
+      "actions": ["audit.ingest"],
+      "resources": ["trade"],
+      "roles": ["backend"]
+    }
+  ]
+}

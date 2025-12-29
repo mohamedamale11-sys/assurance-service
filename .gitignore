@@ -1,0 +1,14 @@
+# Go build
+/bin/
+
+# Env + secrets
+.env
+
+# Local data (audit logs, roots)
+/data/
+/data_demo/
+*.log
+
+# OS/editor
+.DS_Store
+*.swp
