@@ -1,32 +1,55 @@
 # Assurance Service
 
-A small, standalone security-assurance service that accepts signed events, stores
-an append-only audit log, and exposes verifiable evidence (hash chain + Merkle
-roots). It also provides a policy-as-code decision API and privacy-preserving
-aggregates.
+Audit-grade assurance for security-critical systems. This service accepts
+HMAC-signed events, writes them to a tamper-evident hash chain, and exposes
+verifiable proof (Merkle roots + offline verification). It also provides a
+policy-as-code decision API and privacy-preserving aggregates.
 
-## Why this exists (plain English)
+This is built for systems where "security" is not enough and you need
+verifiable evidence that the system behaved correctly.
 
-This service is the "independent verifier" for your system. The backend sends
-important events (trades, policy decisions, swaps, etc.) to the verifier. The
-verifier writes each event into a tamper-evident log. Later, anyone can call
-`/audit/verify` to prove the log was not modified.
+## Why this matters
 
-If a record is changed or deleted, verification fails. That is the assurance.
+Most systems can say "trust me." This service can **prove** it. The audit log is
+append-only and self-verifying. If anyone tries to change history, verification
+fails. That is the core assurance guarantee.
 
-## Architecture overview
+## Architecture diagram (system context)
 
-1) Client/backend sends a signed JSON event to `POST /events`.
-2) The service verifies the HMAC signature.
-3) The event is appended to an immutable hash chain (`events.log`).
-4) Every batch, a Merkle root is written to `roots.log`.
-5) `/audit/verify` recomputes the chain and roots to detect tampering.
+```mermaid
+flowchart LR
+  UI[Flutter App] -->|/assurance/status| API[Go Smart Money API]
+  API -->|HMAC-signed events| AS[Assurance Service]
+  AS -->|/audit/verify + /audit/root/latest| API
+  AS --> Evidence[(events.log + roots.log)]
+```
 
-## Key security guarantees
+## Architecture diagram (inside the assurance service)
 
-- Tamper evidence: any log edit/deletion/reorder is detectable.
-- Provenance: only a trusted emitter (shared secret) can submit events.
-- Auditability: verification can be repeated offline with the CLI.
+```mermaid
+flowchart TB
+  Ingest[POST /events] --> VerifySig{HMAC valid?}
+  VerifySig -->|yes| Append[Append to hash chain]
+  Append --> Batch[Batch Merkle root]
+  Batch --> Logs[(events.log + roots.log)]
+  VerifySig -->|no| Reject[401 invalid signature]
+```
+
+## What you can prove
+
+- **Tamper evidence**: any edit, deletion, or reorder is detectable.
+- **Provenance**: only a trusted emitter can submit events (HMAC).
+- **Auditability**: verification can be repeated offline with the CLI.
+- **Assurance-first design**: evidence artifacts are first-class outputs.
+
+## Demo in 3 minutes (what to show)
+
+1) Start the assurance service.
+2) Send a signed event.
+3) Show `/audit/verify` returning OK.
+4) Corrupt the log and show verification fails.
+
+Commands are below.
 
 ## Quick start
 
@@ -60,6 +83,18 @@ curl -s http://127.0.0.1:9010/audit/verify
 curl -s http://127.0.0.1:9010/audit/root/latest
 curl -s "http://127.0.0.1:9010/audit/events?limit=5"
 ```
+
+## Tamper-evidence demo (fail on modification)
+
+```bash
+cd assurance-service
+cp -R data data_demo
+printf "x" >> data_demo/events.log
+
+go run ./cmd/assurectl verify --data ./data_demo --batch 100
+```
+
+If the log is modified, verification returns errors.
 
 ## API endpoints
 
@@ -112,7 +147,7 @@ curl -s -X POST http://127.0.0.1:9010/policy/check \
   -d '{"subject":{"id":"u1","roles":["user"],"attributes":{"tier":"free"}},"action":"wallet.send","resource":"wallet","context":{"amount_sol":0.5}}'
 ```
 
-The engine evaluates rules top-down and returns allow/deny with reasons.
+The engine evaluates rules and returns allow/deny with reasons.
 
 ## Privacy aggregates
 
@@ -125,14 +160,15 @@ from the event log. If the count is below k, results are suppressed.
 go run ./cmd/assurectl verify --data ./data --batch 100
 ```
 
-## Data storage
+## Data storage (evidence artifacts)
 
 By default the service writes:
 
 - `data/events.log` (append-only record chain)
 - `data/roots.log` (Merkle roots per batch)
 
-These files are the evidence artifacts for audits.
+These files are the evidence artifacts for audits. They are intentionally
+append-only and can be verified offline.
 
 ## Environment variables
 
@@ -155,6 +191,15 @@ ASSURANCE_SHARED_SECRET=dev_secret
 
 The backend signs events and posts to `/events`. It exposes `/assurance/status`
 so the UI can show a Verified/Unverified badge.
+
+## Formal verification artifact
+
+The audit-chain invariant is specified in:
+
+- `specs/audit_chain.tla`
+
+This is a lightweight formal spec that captures the expected hash-chain
+properties and batch-root behavior.
 
 ## Troubleshooting
 
